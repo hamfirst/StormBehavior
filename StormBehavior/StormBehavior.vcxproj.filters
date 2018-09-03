@@ -2,12 +2,7 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClInclude Include="StormBehaviorTree.h" />
-    <ClInclude Include="StormBehaviorNode.h" />
-    <ClInclude Include="StormBehaviorUpdater.h" />
     <ClInclude Include="StormBehaviorTreeTemplate.h" />
     <ClInclude Include="StormBehaviorTreeTemplateBuilder.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="StormBehaviorTree.cpp" />
   </ItemGroup>
 </Project>

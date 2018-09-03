@@ -50,10 +50,15 @@ inline BT State()
 auto TestTree = StormBehaviorTreeTemplate(BT(StormBehaviorNodeType::kSelect)
   .AddService<TestUpdater>()
   .AddChild(
-    BT(StormBehaviorNodeType::kSelect)
+    BT(StormBehaviorNodeType::kSequence)
       .AddChild(
-        State<TestUpdater>()
-        .AddConditional<TestConditional>()
+        BT(StormBehaviorNodeType::kSelect)
+          .AddChild(
+            State<TestUpdater>()
+          )
+          .AddChild(
+            State<TestUpdater>()
+          )
       )
       .AddChild(
         State<TestUpdater>()

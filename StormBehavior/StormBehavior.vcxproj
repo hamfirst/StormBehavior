@@ -19,14 +19,9 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="StormBehaviorNode.h" />
     <ClInclude Include="StormBehaviorTree.h" />
     <ClInclude Include="StormBehaviorTreeTemplate.h" />
     <ClInclude Include="StormBehaviorTreeTemplateBuilder.h" />
-    <ClInclude Include="StormBehaviorUpdater.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="StormBehaviorTree.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>

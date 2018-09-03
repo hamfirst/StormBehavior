@@ -143,26 +143,21 @@ private:
       node.m_ChildEnd = static_cast<int>(m_ChildNodeLookup.size());
 
       auto child_index = node.m_ChildStart;
+      std::vector<int> pending_next_in_sequence_nodes;
+
       for(auto & elem : bt.m_Subtrees)
       {
         std::vector<int> new_next_in_sequence_nodes;
-        m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, new_next_in_sequence_nodes, conditionals, services);
+        auto child_node_index = ProcessNode(*elem.m_SubTree, new_next_in_sequence_nodes, conditionals, services);
+        m_ChildNodeLookup[child_index] = child_node_index;
 
+        for (auto & leaf_index : pending_next_in_sequence_nodes)
+        {
+          m_Leaves[leaf_index].m_NextInSequence = child_node_index;
+        }
+
+        pending_next_in_sequence_nodes = new_next_in_sequence_nodes;
         child_index++;
-        if(child_index != node.m_ChildEnd)
-        {
-          for(auto & leaf_index : new_next_in_sequence_nodes)
-          {
-            m_Leaves[leaf_index].m_NextInSequence = child_index;
-          }
-        }
-        else
-        {
-          for(auto & leaf_index : new_next_in_sequence_nodes)
-          {
-            next_in_sequence_nodes.push_back(leaf_index);
-          }
-        }
       }
     }
     else
@@ -226,7 +221,8 @@ private:
       case StormBehaviorNodeType::kLeaf:
         {
           auto & state_info = m_States[node.m_LeafIndex];
-          printf("Leaf (%s)\n", state_info.m_DebugName);  
+          auto & leaf_info = m_Leaves[node.m_LeafIndex];
+          printf("Leaf (%d) (%s) -> (%d)\n", node.m_LeafIndex, state_info.m_DebugName, leaf_info.m_NextInSequence);
         }
         break;
     }

@@ -4,8 +4,6 @@
 
 #include "StormBehaviorTreeTemplate.h"
 
-
-
 enum class StormBehaviorUpdateNodeResult
 {
   kContinue,
@@ -52,15 +50,44 @@ public:
       return;
     }
 
+    while (true)
+    {
+      if (m_CurrentNode == -1)
+      {
+        auto new_node = TraverseNode(0, data, context, random);
+        if (new_node == -1)
+        {
+          break;
+        }
 
-    if(m_CurrentNode == -1)
-    {
-      m_CurrentNode = TraverseNode(0, data, context, random);
-      ActivateNode(m_CurrentNode, -1, data, context);
-    }
-    else
-    {
-      UpdateNode();
+        ActivateNode(new_node, m_CurrentNode, data, context);
+      }
+      else
+      {
+        auto result = UpdateNode(data, context);
+        if (result == StormBehaviorUpdateNodeResult::kAbort)
+        {
+          auto new_node = TraverseNode(0, data, context, random);
+          ActivateNode(new_node, m_CurrentNode, data, context);
+        }
+        else if (result == StormBehaviorUpdateNodeResult::kFinished)
+        {
+          auto & node_info = m_BehaviorTree->m_Nodes[m_CurrentNode];
+          auto & leaf_info = m_BehaviorTree->m_Leaves[node_info.m_LeafIndex];
+          
+          auto new_node = TraverseNode(leaf_info.m_NextInSequence, data, context, random);
+          if (new_node == -1)
+          {
+            new_node = TraverseNode(0, data, context, random);
+            if (new_node == -1)
+            {
+              break;
+            }
+          }
+
+          ActivateNode(new_node, m_CurrentNode, data, context);
+        }
+      }
     }
   }
 
@@ -96,7 +123,7 @@ private:
         return;
       }
       
-      auto s = random() % total_weight;
+      auto s = (int)random() % total_weight;
       for(int sort = index; sort < static_cast<int>(vals.size()); ++sort)
       {
         if(s < vals[sort].second)
@@ -173,6 +200,8 @@ private:
       void * service_mem = m_TreeMemory.get() + service_info.m_Offset;
       service_info.m_Activate(service_mem, data, context);
     }
+
+    m_CurrentNode = node_index;
   }
 
   StormBehaviorUpdateNodeResult UpdateNode(DataType & data, ContextType & context)
@@ -180,17 +209,36 @@ private:
     auto & node_info = m_BehaviorTree->m_Nodes[m_CurrentNode];
     auto & leaf_info = m_BehaviorTree->m_Leaves[m_CurrentNode];
 
-    for(int index = node_info.m_ConditionalStart; index < node_info.m_ConditionalEnd; ++index)
+    for(int index = leaf_info.m_ConditionalStart; index < leaf_info.m_ConditionalEnd; ++index)
     {
       auto conditional_index = m_BehaviorTree->m_ConditionalLookup[index];
       auto & conditional_info = m_BehaviorTree->m_Conditionals[conditional_index];
-      void * conditional_mem = m_TreeMemory.get() + conditional_info.m_Offset;
+      auto conditional_mem = m_TreeMemory.get() + conditional_info.m_Offset;
 
       if(conditional_info.m_Check(conditional_mem, data, context) == false)
       {
         return StormBehaviorUpdateNodeResult::kAbort;
       }
     }
+
+    for (int index = leaf_info.m_ServiceStart; index < leaf_info.m_ServiceEnd; ++index)
+    {
+      auto service_index = m_BehaviorTree->m_ServiceLookup[index];
+      auto & service_info = m_BehaviorTree->m_Services[service_index];
+      auto service_mem = m_TreeMemory.get() + service_info.m_Offset;
+
+      service_info.m_Update(service_mem, data, context);
+    }
+
+    auto & state_info = m_BehaviorTree->m_States[node_info.m_LeafIndex];
+    auto state_mem = m_TreeMemory.get() + state_info.m_Offset;
+
+    if (state_info.m_Update(state_mem, data, context))
+    {
+      StormBehaviorUpdateNodeResult::kFinished;
+    }
+
+    return StormBehaviorUpdateNodeResult::kContinue;
   }
 
   template <typename RandomSource>
