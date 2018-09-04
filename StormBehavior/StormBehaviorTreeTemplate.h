@@ -36,9 +36,10 @@ public:
   StormBehaviorTreeTemplate(const StormBehaviorTreeTemplateBuilder<DataType, ContextType> & bt)
   {
     std::vector<int> next_in_sequence_nodes;
-    std::vector<int> conditionals;
+    std::vector<int> continuous_conditionals;
+    std::vector<int> preempt_conditionals;
     std::vector<int> services;
-    ProcessNode(bt, next_in_sequence_nodes, conditionals, services);
+    ProcessNode(bt, next_in_sequence_nodes, continuous_conditionals, preempt_conditionals, services, false);
   }
 
   void DebugPrint()
@@ -63,7 +64,8 @@ private:
   }
 
   int ProcessNode(const StormBehaviorTreeTemplateBuilder<DataType, ContextType> & bt,
-    std::vector<int> & next_in_sequence_nodes, std::vector<int> & conditionals, std::vector<int> & services)
+    std::vector<int> & next_in_sequence_nodes, std::vector<int> & continuous_conditionals, 
+    std::vector<int> & preempt_conditionals, std::vector<int> & services, bool can_preempt)
   {
     auto node_index = static_cast<int>(m_Nodes.size());
     m_Nodes.emplace_back();
@@ -71,7 +73,7 @@ private:
     auto & node = m_Nodes.back();
     node.m_Type = bt.m_Type;
 
-    auto current_conditional_count = conditionals.size();
+    auto current_continuous_conditional_count = continuous_conditionals.size();
     node.m_ConditionalStart = static_cast<int>(m_Conditionals.size());
     for(auto & elem : bt.m_Conditionals)
     {
@@ -82,8 +84,11 @@ private:
       m_TotalSize += elem.m_Size;
       
       PushMemInit(m_Conditionals.back());
-
-      conditionals.emplace_back(conditional_index);
+      
+      if(m_Conditionals.back().m_Continuous)
+      {
+        continuous_conditionals.push_back(conditional_index);
+      }
     }
     node.m_ConditionalEnd = static_cast<int>(m_Conditionals.size());
 
@@ -122,10 +127,16 @@ private:
       next_in_sequence_nodes.push_back(leaf_index);
 
       leaf.m_ConditionalStart = static_cast<int>(m_ConditionalLookup.size());
-      for(auto & conditional_index : conditionals)
+      for(auto & conditional_index : preempt_conditionals)
       {
         m_ConditionalLookup.emplace_back(conditional_index);
       }
+      
+      for(auto & conditional_index : continuous_conditionals)
+      {
+        m_ConditionalLookup.emplace_back(conditional_index);
+      }
+
       leaf.m_ConditionalEnd = static_cast<int>(m_ConditionalLookup.size());
 
       leaf.m_ServiceStart = static_cast<int>(m_ServiceLookup.size());
@@ -148,7 +159,8 @@ private:
       for(auto & elem : bt.m_Subtrees)
       {
         std::vector<int> new_next_in_sequence_nodes;
-        auto child_node_index = ProcessNode(*elem.m_SubTree, new_next_in_sequence_nodes, conditionals, services);
+        auto child_node_index = ProcessNode(*elem.m_SubTree, new_next_in_sequence_nodes, 
+          continuous_conditionals, preempt_conditionals, services, false);
         m_ChildNodeLookup[child_index] = child_node_index;
 
         for (auto & leaf_index : pending_next_in_sequence_nodes)
@@ -166,15 +178,20 @@ private:
       node.m_ChildStart = static_cast<int>(m_ChildNodeLookup.size());
       m_ChildNodeLookup.resize(m_ChildNodeLookup.size() + bt.m_Subtrees.size());
       node.m_ChildEnd = static_cast<int>(m_ChildNodeLookup.size());
+      
+      auto current_preempt_conditionals_size = static_cast<int>(preempt_conditionals.size());
 
       auto child_index = node.m_ChildStart;
       for(auto & elem : bt.m_Subtrees)
       {
         std::vector<int> new_next_in_sequence_nodes;
-        m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, next_in_sequence_nodes, conditionals, services);
+        m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, next_in_sequence_nodes, 
+          continuous_conditionals, preempt_conditionals, services, bt.m_Type == StormBehaviorNodeType::kSelect);
 
         child_index++;
       }
+
+      preempt_conditionals.resize(current_preempt_conditionals_size);
 
       if(bt.m_Type == StormBehaviorNodeType::kRandom)
       {
@@ -187,8 +204,22 @@ private:
       }
     }
 
-    conditionals.resize(current_conditional_count);
+    continuous_conditionals.resize(current_continuous_conditional_count);
     services.resize(current_service_count);
+
+    if(can_preempt)
+    {
+      for(int index = node.m_ConditionalStart; index < node.m_ConditionalEnd; ++index)
+      {
+        auto conditional_index = m_ConditionalLookup[index];
+        auto & conditional_info = m_Conditionals[conditional_index];
+
+        if(conditional_info.m_Preempt)
+        {
+          preempt_conditionals.push_back(conditional_index);
+        }
+      }
+    }
 
     return node_index;
   }

@@ -1,14 +1,17 @@
 #pragma once
 
 #include <memory>
+#include <cassert>
 
 #include "StormBehaviorTreeTemplate.h"
 
-enum class StormBehaviorUpdateNodeResult
+#define ONE_UPDATE_PER_CALL
+
+enum class StormBehaviorTreeElementType
 {
-  kContinue,
-  kFinished,
-  kAbort,
+  kConditional,
+  kService,
+  kState,
 };
 
 template <typename DataType, typename ContextType>
@@ -50,44 +53,94 @@ public:
       return;
     }
 
-    while (true)
+    if (m_CurrentNode == -1)
     {
-      if (m_CurrentNode == -1)
+      AdvanceToNextNode(data, context, random, true);
+    }
+    else
+    {
+      if(CheckNodeConditionals(m_CurrentNode, data, context) == false)
       {
-        auto new_node = TraverseNode(0, data, context, random);
-        if (new_node == -1)
-        {
-          break;
-        }
-
-        ActivateNode(new_node, m_CurrentNode, data, context);
+        AdvanceToNextNode(data, context, random, true);
       }
-      else
+      else if (UpdateNode(data, context))
       {
-        auto result = UpdateNode(data, context);
-        if (result == StormBehaviorUpdateNodeResult::kAbort)
+        AdvanceToNextNode(data, context, random, false);
+      }
+    }
+  }
+
+  template <typename Visitor>
+  void VisitNodes(Visitor && visitor)
+  {
+    if(m_CurrentNode == -1)
+    {
+      for(auto & elem : m_BehaviorTree->m_States)
+      {
+        auto * mem = m_TreeMemory.get() + elem.m_Offset;
+        visitor(StormBehaviorTreeElementType::kState, elem.m_TypeId, mem, false);
+      }
+
+      for(auto & elem : m_BehaviorTree->m_Conditionals)
+      {
+        auto * mem = m_TreeMemory.get() + elem.m_Offcset;
+        visitor(StormBehaviorTreeElementType::kConditional, elem.m_TypeId, mem, false);
+      }
+
+      for(auto & elem : m_BehaviorTree->m_Services)
+      {
+        auto * mem = m_TreeMemory.get() + elem.m_Offset;
+        visitor(StormBehaviorTreeElementType::kService, elem.m_TypeId, mem, false);
+      }
+    }
+    else
+    {
+      auto & node_info = m_BehaviorTree->m_Nodes[m_CurrentNode];
+      auto & leaf_info = m_BehaviorTree->m_Leaves[node_info.m_LeafIndex];
+
+      auto current_node = &m_BehaviorTree->m_States[node_info.m_LeafIndex];
+
+      for(auto & elem : m_BehaviorTree->m_States)
+      {
+        auto * mem = m_TreeMemory.get() + elem.m_Offset;
+        visitor(StormBehaviorTreeElementType::kState, elem.m_TypeId, mem, current_node == &elem);
+      }
+
+      for(int index = 0; index < static_cast<int>(m_BehaviorTree->m_Conditionals.size()); ++index)
+      {
+        bool active = false;
+        for(auto lookup_index = leaf_info.m_ConditionalStart; lookup_index < leaf_info.m_ConditionalEnd; ++lookup_index)
         {
-          auto new_node = TraverseNode(0, data, context, random);
-          ActivateNode(new_node, m_CurrentNode, data, context);
-        }
-        else if (result == StormBehaviorUpdateNodeResult::kFinished)
-        {
-          auto & node_info = m_BehaviorTree->m_Nodes[m_CurrentNode];
-          auto & leaf_info = m_BehaviorTree->m_Leaves[node_info.m_LeafIndex];
-          
-          auto new_node = TraverseNode(leaf_info.m_NextInSequence, data, context, random);
-          if (new_node == -1)
+          auto conditional_index = m_BehaviorTree->m_ConditionalLookup[lookup_index];
+          if(conditional_index == index)
           {
-            new_node = TraverseNode(0, data, context, random);
-            if (new_node == -1)
-            {
-              break;
-            }
+            active = true;
           }
-
-          ActivateNode(new_node, m_CurrentNode, data, context);
         }
+
+        auto & elem = m_BehaviorTree->m_Conditionals[index];
+
+        auto * mem = m_TreeMemory.get() + elem.m_Offcset;
+        visitor(StormBehaviorTreeElementType::kConditional, elem.m_TypeId, mem, active);
       }
+
+      for(int index = 0; index < static_cast<int>(m_BehaviorTree->m_Services.size()); ++index)
+      {
+        bool active = false;
+        for(auto lookup_index = leaf_info.m_ServiceStart; lookup_index < leaf_info.m_ServiceEnd; ++lookup_index)
+        {
+          auto service_index = m_BehaviorTree->m_ServiceLookup[lookup_index];
+          if(service_index == index)
+          {
+            active = true;
+          }
+        }
+        
+        auto & elem = m_BehaviorTree->m_Services[index];
+
+        auto * mem = m_TreeMemory.get() + elem.m_Offset;
+        visitor(StormBehaviorTreeElementType::kService, elem.m_TypeId, mem, active);
+      }      
     }
   }
 
@@ -190,24 +243,30 @@ private:
     for(auto & elem : old_service_indices)
     {
       auto & service_info = m_BehaviorTree->m_Services[elem];
-      void * service_mem = m_TreeMemory.get() + service_info.m_Offset;
-      service_info.m_Deactivate(service_mem, data, context);
+      if(service_info.m_Deactivate)
+      {
+        void * service_mem = m_TreeMemory.get() + service_info.m_Offset;
+        service_info.m_Deactivate(service_mem, data, context);
+      }
     }
 
     for(auto & elem : new_service_indices)
     {
       auto & service_info = m_BehaviorTree->m_Services[elem];
-      void * service_mem = m_TreeMemory.get() + service_info.m_Offset;
-      service_info.m_Activate(service_mem, data, context);
+      if(service_info.m_Activate)
+      {
+        void * service_mem = m_TreeMemory.get() + service_info.m_Offset;
+        service_info.m_Activate(service_mem, data, context);
+      }
     }
 
     m_CurrentNode = node_index;
   }
 
-  StormBehaviorUpdateNodeResult UpdateNode(DataType & data, ContextType & context)
+  bool CheckNodeConditionals(int node_index, DataType & data, ContextType & context)
   {
-    auto & node_info = m_BehaviorTree->m_Nodes[m_CurrentNode];
-    auto & leaf_info = m_BehaviorTree->m_Leaves[m_CurrentNode];
+    auto & node_info = m_BehaviorTree->m_Nodes[node_index];
+    auto & leaf_info = m_BehaviorTree->m_Leaves[node_info.m_LeafIndex];
 
     for(int index = leaf_info.m_ConditionalStart; index < leaf_info.m_ConditionalEnd; ++index)
     {
@@ -217,33 +276,46 @@ private:
 
       if(conditional_info.m_Check(conditional_mem, data, context) == false)
       {
-        return StormBehaviorUpdateNodeResult::kAbort;
+        return false;
       }
     }
+
+    return true;
+  }
+
+  bool UpdateNode(DataType & data, ContextType & context)
+  {
+    auto & node_info = m_BehaviorTree->m_Nodes[m_CurrentNode];
+    auto & leaf_info = m_BehaviorTree->m_Leaves[m_CurrentNode];
 
     for (int index = leaf_info.m_ServiceStart; index < leaf_info.m_ServiceEnd; ++index)
     {
       auto service_index = m_BehaviorTree->m_ServiceLookup[index];
       auto & service_info = m_BehaviorTree->m_Services[service_index];
-      auto service_mem = m_TreeMemory.get() + service_info.m_Offset;
-
-      service_info.m_Update(service_mem, data, context);
+      if(service_info.m_Update)
+      {
+        auto service_mem = m_TreeMemory.get() + service_info.m_Offset;
+        service_info.m_Update(service_mem, data, context);
+      }
     }
 
     auto & state_info = m_BehaviorTree->m_States[node_info.m_LeafIndex];
     auto state_mem = m_TreeMemory.get() + state_info.m_Offset;
 
-    if (state_info.m_Update(state_mem, data, context))
+    bool result = state_info.m_Update(state_mem, data, context);
+    if (result)
     {
-      StormBehaviorUpdateNodeResult::kFinished;
+      return true;
     }
 
-    return StormBehaviorUpdateNodeResult::kContinue;
+    return false;
   }
 
   template <typename RandomSource>
   int TraverseNode(int node_index, DataType & data, ContextType & context, RandomSource & random)
   {
+    assert(node_index != -1);
+
     auto & node = m_BehaviorTree->m_Nodes[node_index];
     for(int index = node.m_ConditionalStart; index < node.m_ConditionalEnd; ++index)
     {
@@ -319,6 +391,87 @@ private:
     }
 
     return -1;
+  }
+
+  template <typename RandomSource>
+  void AdvanceToNextNode(DataType & data, ContextType & context, RandomSource & random, bool restart)
+  {
+    bool restarted = restart;
+    bool updated = false;
+    int new_node = restart ? -1 : m_CurrentNode;
+
+    while(true)
+    {
+      if(new_node == -1)
+      {
+        new_node = TraverseNode(0, data, context, random);
+        
+        if (new_node == -1)
+        {
+          ActivateNode(new_node, m_CurrentNode, data, context);
+          return;
+        }
+
+        ActivateNode(new_node, m_CurrentNode, data, context);
+
+#ifdef ONE_UPDATE_PER_CALL
+        if(updated)
+        {
+          return;
+        }
+#endif
+        updated = true;
+        if(UpdateNode(data, context) == false)
+        {
+          return;
+        }
+      }
+      else
+      {
+        auto & node_info = m_BehaviorTree->m_Nodes[new_node];
+        auto & leaf_info = m_BehaviorTree->m_Leaves[node_info.m_LeafIndex];
+        
+        new_node = -1;
+        if(leaf_info.m_NextInSequence != -1)
+        {
+          new_node = TraverseNode(leaf_info.m_NextInSequence, data, context, random);
+          if(new_node != -1)
+          {
+            if(CheckNodeConditionals(new_node, data, context) == false)
+            {
+              new_node = -1;
+            }
+          }
+        }
+
+        if (new_node == -1)
+        {
+          if(restarted)
+          {
+            ActivateNode(new_node, m_CurrentNode, data, context);
+            return;
+          }  
+
+          restarted = true;
+          continue;
+        }
+
+        ActivateNode(new_node, m_CurrentNode, data, context);
+
+#ifdef ONE_UPDATE_PER_CALL
+        if(updated)
+        {
+          return;
+        }
+#endif
+
+        updated = true;
+        if(UpdateNode(data, context) == false)
+        {
+          return;
+        }
+      }
+    }
   }
 
 private:

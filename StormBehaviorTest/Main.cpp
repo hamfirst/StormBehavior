@@ -14,19 +14,47 @@ struct TestData
   int b;
 };
 
-struct TestUpdater
+struct TestUpdater1
 {
   bool Update(const TestData & test, const TestContext & context)
   {
+    printf("Update 1\n");
+    return true;
+  }
+};
+
+struct TestUpdater2
+{
+  bool Update(const TestData & test, const TestContext & context)
+  {
+    printf("Update 2\n");
+    return true;
+  }
+};
+
+struct TestUpdater3
+{
+  bool Update(const TestData & test, const TestContext & context)
+  {
+    printf("Update 3\n");
+    return true;
+  }
+};
+
+struct TestUpdater4
+{
+  bool Update(const TestData & test, const TestContext & context)
+  {
+    printf("Update 4\n");
     return true;
   }
 };
 
 struct TestService
 {
-  bool Update(const TestData & test, const TestContext & context)
+  void Update(const TestData & test, const TestContext & context)
   {
-    return true;
+    printf("Test service\n");
   }
 };
 
@@ -34,6 +62,7 @@ struct TestConditional
 {
   bool Check(const TestData & data, const TestContext & context)
   {
+    printf("Test conditional\n");
     return true;
   }
 };
@@ -48,27 +77,25 @@ inline BT State()
 }
 
 auto TestTree = StormBehaviorTreeTemplate(BT(StormBehaviorNodeType::kSelect)
-  .AddService<TestUpdater>()
   .AddChild(
     BT(StormBehaviorNodeType::kSequence)
+      .AddService<TestService>()
+      .AddConditional<TestConditional>(true, true)
       .AddChild(
-        BT(StormBehaviorNodeType::kSelect)
+        BT(StormBehaviorNodeType::kRandom)
           .AddChild(
-            State<TestUpdater>()
+            State<TestUpdater1>()
           )
           .AddChild(
-            State<TestUpdater>()
+            State<TestUpdater2>()
           )
       )
       .AddChild(
-        State<TestUpdater>()
-        .AddService<TestService>()
+        State<TestUpdater3>()
       )
   )
   .AddChild(
-    State<TestUpdater>()
-    .AddService<TestService>()
-    .AddConditional<TestConditional>()
+    State<TestUpdater4>()
   ));
 
 int main()
@@ -80,6 +107,12 @@ int main()
 
   TestData data;
   TestContext context;
+  bt_inst.Update(data, context, r);
+  bt_inst.Update(data, context, r);
+  bt_inst.Update(data, context, r);
+  
+  bt_inst.Update(data, context, r);
+  bt_inst.Update(data, context, r);
   bt_inst.Update(data, context, r);
 
   printf("Done\n");

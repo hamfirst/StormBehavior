@@ -191,9 +191,9 @@ public:
   }
 
   template <typename Conditional>
-  SubtreeType && AddConditional() &&
+  SubtreeType && AddConditional(bool preempt = false, bool continuous = false) &&
   {
-    AddConditionalInternal<Conditional>();
+    AddConditionalInternal<Conditional>(preempt, continuous);
     return std::forward<SubtreeType>(*this);
   }
 
@@ -272,7 +272,7 @@ private:
   }
 
   template <typename Conditional>
-  void AddConditionalInternal(bool preempt = false, bool continuous = false)
+  void AddConditionalInternal(bool preempt, bool continuous)
   {
     ConditionalType conditional;
     conditional.m_TypeId = typeid(Conditional).hash_code();
