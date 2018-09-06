@@ -16,19 +16,47 @@ struct TestData
   int b;
 };
 
-struct TestUpdater
+struct TestUpdater1
 {
   bool Update(const TestData & test, const TestContext & context)
   {
+    printf("Update 1\n");
+    return true;
+  }
+};
+
+struct TestUpdater2
+{
+  bool Update(const TestData & test, const TestContext & context)
+  {
+    printf("Update 2\n");
+    return true;
+  }
+};
+
+struct TestUpdater3
+{
+  bool Update(const TestData & test, const TestContext & context)
+  {
+    printf("Update 3\n");
+    return true;
+  }
+};
+
+struct TestUpdater4
+{
+  bool Update(const TestData & test, const TestContext & context)
+  {
+    printf("Update 4\n");
     return true;
   }
 };
 
 struct TestService
 {
-  bool Update(const TestData & test, const TestContext & context)
+  void Update(const TestData & test, const TestContext & context)
   {
-    return true;
+    printf("Test service\n");
   }
 };
 
@@ -36,6 +64,7 @@ struct TestConditional
 {
   bool Check(const TestData & data, const TestContext & context)
   {
+    printf("Test conditional\n");
     return true;
   }
 };
@@ -49,6 +78,7 @@ inline BT State()
   return BT(StormBehaviorTreeTemplateStateMarker<StateUpdater>{});
 }
 
+<<<<<<< HEAD
 TEST(BTTest, SelectNode)
 {
   auto TestTreeTemplate = StormBehaviorTreeTemplate(
@@ -74,6 +104,46 @@ TEST(BTTest, SelectNode)
   auto test_tree = StormBehaviorTree(TestTreeTemplate);
   
 }
+=======
+auto TestTree = StormBehaviorTreeTemplate(BT(StormBehaviorNodeType::kSelect)
+  .AddChild(
+    BT(StormBehaviorNodeType::kSequence)
+      .AddService<TestService>()
+      .AddConditional<TestConditional>(true, true)
+      .AddChild(
+        BT(StormBehaviorNodeType::kRandom)
+          .AddChild(
+            State<TestUpdater1>()
+          )
+          .AddChild(
+            State<TestUpdater2>()
+          )
+      )
+      .AddChild(
+        State<TestUpdater3>()
+      )
+  )
+  .AddChild(
+    State<TestUpdater4>()
+  ));
+
+int main()
+{
+  TestTree.DebugPrint();
+
+  std::mt19937 r;
+  StormBehaviorTree bt_inst(TestTree);
+
+  TestData data;
+  TestContext context;
+  bt_inst.Update(data, context, r);
+  bt_inst.Update(data, context, r);
+  bt_inst.Update(data, context, r);
+  
+  bt_inst.Update(data, context, r);
+  bt_inst.Update(data, context, r);
+  bt_inst.Update(data, context, r);
+>>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
 
 int main(int argc, char ** argv)
 {

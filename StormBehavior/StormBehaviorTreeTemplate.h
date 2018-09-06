@@ -36,8 +36,10 @@ public:
   StormBehaviorTreeTemplate(const StormBehaviorTreeTemplateBuilder<DataType, ContextType> & bt)
   {
     std::vector<int> next_in_sequence_nodes;
-    std::vector<int> conditionals;
+    std::vector<int> continuous_conditionals;
+    std::vector<int> preempt_conditionals;
     std::vector<int> services;
+<<<<<<< HEAD
 
     int init_data_size = 0;
     CalculateInitDataSize(bt, init_data_size);
@@ -61,6 +63,9 @@ public:
       auto * mem = m_InitDataMemory.get() + elem.m_InitOffset;
       elem.m_DestroyInitInfo(mem);
     }
+=======
+    ProcessNode(bt, next_in_sequence_nodes, continuous_conditionals, preempt_conditionals, services, false);
+>>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
   }
 
   void DebugPrint()
@@ -119,7 +124,12 @@ private:
   }
 
   int ProcessNode(const StormBehaviorTreeTemplateBuilder<DataType, ContextType> & bt,
+<<<<<<< HEAD
     std::vector<int> & next_in_sequence_nodes, std::vector<int> & conditionals, std::vector<int> & services, int & init_mem_offset)
+=======
+    std::vector<int> & next_in_sequence_nodes, std::vector<int> & continuous_conditionals, 
+    std::vector<int> & preempt_conditionals, std::vector<int> & services, bool can_preempt)
+>>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
   {
     auto node_index = static_cast<int>(m_Nodes.size());
     m_Nodes.emplace_back();
@@ -127,7 +137,7 @@ private:
     auto & node = m_Nodes.back();
     node.m_Type = bt.m_Type;
 
-    auto current_conditional_count = conditionals.size();
+    auto current_continuous_conditional_count = continuous_conditionals.size();
     node.m_ConditionalStart = static_cast<int>(m_Conditionals.size());
     for(int index = 0; index < static_cast<int>(bt.m_Conditionals.size()); ++index)
     {
@@ -138,12 +148,21 @@ private:
       m_Conditionals.back().m_Offset = m_TotalSize;
       m_TotalSize += elem.m_Size;
       
+<<<<<<< HEAD
       auto & init_info = bt.m_ConditionInitInfo[index];
       AlignSize(init_mem_offset, init_info.m_Alignment);
       init_mem_offset += init_info.m_Size;
       PushMemInit(m_Conditionals.back(), init_info, init_mem_offset);
 
       conditionals.emplace_back(conditional_index);
+=======
+      PushMemInit(m_Conditionals.back());
+      
+      if(m_Conditionals.back().m_Continuous)
+      {
+        continuous_conditionals.push_back(conditional_index);
+      }
+>>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
     }
     node.m_ConditionalEnd = static_cast<int>(m_Conditionals.size());
 
@@ -189,10 +208,16 @@ private:
       next_in_sequence_nodes.push_back(leaf_index);
 
       leaf.m_ConditionalStart = static_cast<int>(m_ConditionalLookup.size());
-      for(auto & conditional_index : conditionals)
+      for(auto & conditional_index : preempt_conditionals)
       {
         m_ConditionalLookup.emplace_back(conditional_index);
       }
+      
+      for(auto & conditional_index : continuous_conditionals)
+      {
+        m_ConditionalLookup.emplace_back(conditional_index);
+      }
+
       leaf.m_ConditionalEnd = static_cast<int>(m_ConditionalLookup.size());
 
       leaf.m_ServiceStart = static_cast<int>(m_ServiceLookup.size());
@@ -210,26 +235,26 @@ private:
       node.m_ChildEnd = static_cast<int>(m_ChildNodeLookup.size());
 
       auto child_index = node.m_ChildStart;
+      std::vector<int> pending_next_in_sequence_nodes;
+
       for(auto & elem : bt.m_Subtrees)
       {
         std::vector<int> new_next_in_sequence_nodes;
+<<<<<<< HEAD
         m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, new_next_in_sequence_nodes, conditionals, services, init_mem_offset);
+=======
+        auto child_node_index = ProcessNode(*elem.m_SubTree, new_next_in_sequence_nodes, 
+          continuous_conditionals, preempt_conditionals, services, false);
+        m_ChildNodeLookup[child_index] = child_node_index;
+>>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
 
+        for (auto & leaf_index : pending_next_in_sequence_nodes)
+        {
+          m_Leaves[leaf_index].m_NextInSequence = child_node_index;
+        }
+
+        pending_next_in_sequence_nodes = new_next_in_sequence_nodes;
         child_index++;
-        if(child_index != node.m_ChildEnd)
-        {
-          for(auto & leaf_index : new_next_in_sequence_nodes)
-          {
-            m_Leaves[leaf_index].m_NextInSequence = child_index;
-          }
-        }
-        else
-        {
-          for(auto & leaf_index : new_next_in_sequence_nodes)
-          {
-            next_in_sequence_nodes.push_back(leaf_index);
-          }
-        }
       }
     }
     else
@@ -238,15 +263,24 @@ private:
       node.m_ChildStart = static_cast<int>(m_ChildNodeLookup.size());
       m_ChildNodeLookup.resize(m_ChildNodeLookup.size() + bt.m_Subtrees.size());
       node.m_ChildEnd = static_cast<int>(m_ChildNodeLookup.size());
+      
+      auto current_preempt_conditionals_size = static_cast<int>(preempt_conditionals.size());
 
       auto child_index = node.m_ChildStart;
       for(auto & elem : bt.m_Subtrees)
       {
         std::vector<int> new_next_in_sequence_nodes;
+<<<<<<< HEAD
         m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, next_in_sequence_nodes, conditionals, services, init_mem_offset);
+=======
+        m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, next_in_sequence_nodes, 
+          continuous_conditionals, preempt_conditionals, services, bt.m_Type == StormBehaviorNodeType::kSelect);
+>>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
 
         child_index++;
       }
+
+      preempt_conditionals.resize(current_preempt_conditionals_size);
 
       if(bt.m_Type == StormBehaviorNodeType::kRandom)
       {
@@ -259,8 +293,22 @@ private:
       }
     }
 
-    conditionals.resize(current_conditional_count);
+    continuous_conditionals.resize(current_continuous_conditional_count);
     services.resize(current_service_count);
+
+    if(can_preempt)
+    {
+      for(int index = node.m_ConditionalStart; index < node.m_ConditionalEnd; ++index)
+      {
+        auto conditional_index = m_ConditionalLookup[index];
+        auto & conditional_info = m_Conditionals[conditional_index];
+
+        if(conditional_info.m_Preempt)
+        {
+          preempt_conditionals.push_back(conditional_index);
+        }
+      }
+    }
 
     return node_index;
   }
@@ -293,7 +341,8 @@ private:
       case StormBehaviorNodeType::kLeaf:
         {
           auto & state_info = m_States[node.m_LeafIndex];
-          printf("Leaf (%s)\n", state_info.m_DebugName);  
+          auto & leaf_info = m_Leaves[node.m_LeafIndex];
+          printf("Leaf (%d) (%s) -> (%d)\n", node.m_LeafIndex, state_info.m_DebugName, leaf_info.m_NextInSequence);
         }
         break;
     }

@@ -254,10 +254,17 @@ public:
     return std::forward<SubtreeType>(*this);
   }
 
+<<<<<<< HEAD
   SubtreeType && AddChildSubTree(const StormBehaviorTreeTemplateBuilder & sub_tree) &&
   {
     m_Subtrees.emplace_back(SubtreeInfo{ &sub_tree, 100 });
     
+=======
+  template <typename Conditional>
+  SubtreeType && AddConditional(bool preempt = false, bool continuous = false) &&
+  {
+    AddConditionalInternal<Conditional>(preempt, continuous);
+>>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
     return std::forward<SubtreeType>(*this);
   }
 
@@ -362,8 +369,13 @@ private:
     
   }
 
+<<<<<<< HEAD
   template <typename Conditional, typename ... Args>
   void AddConditionalInternal(bool preempt, bool continuous, Args && ... args)
+=======
+  template <typename Conditional>
+  void AddConditionalInternal(bool preempt, bool continuous)
+>>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
   {
     ConditionalType conditional;
     conditional.m_TypeId = typeid(Conditional).hash_code();
