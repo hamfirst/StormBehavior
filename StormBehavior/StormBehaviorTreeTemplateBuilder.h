@@ -117,14 +117,14 @@ struct StormBehaviorTreeTemplateInitInfo
 template <class T, class Tuple, std::size_t... I>
 void StormBehaviorMakeFromTupleImpl(void * mem, Tuple&& t, std::index_sequence<I...>)
 {
-  return new (mem) T(std::get<I>(std::forward<Tuple>(t))...);
+  new (mem) T(std::get<I>(std::forward<Tuple>(t))...);
 }
  
 template <class T, class Tuple>
 void StormBehaviorMakeFromTuple(void * mem, Tuple&& t)
 {
-    return StormBehaviorMakeFromTupleImpl<T>(mem, std::forward<Tuple>(t),
-        std::make_index_sequence<std::tuple_size<std::remove_reference_t<Tuple>>::value>{});
+   StormBehaviorMakeFromTupleImpl<T>(mem, std::forward<Tuple>(t),
+      std::make_index_sequence<std::tuple_size<std::remove_reference_t<Tuple>>::value>{});
 }
 
 template <typename UpdaterType>
@@ -176,7 +176,7 @@ public:
           sizeof(InitData),
           alignof(InitData),
           [](void * mem){ InitData * i = static_cast<InitData *>(mem); i->~InitData(); },
-          [](void * src, void * dst){ InitData * i = static_cast<InitData *>(src); new(dst) InitData(*i); }});
+          [](const void * src, void * dst){ auto i = static_cast<const InitData *>(src); new(dst) InitData(*i); }});
       
       new (m_StateInitInfo->m_Memory.get()) InitData(std::make_tuple(std::forward<Args>(args)...));
     }
@@ -254,17 +254,10 @@ public:
     return std::forward<SubtreeType>(*this);
   }
 
-<<<<<<< HEAD
   SubtreeType && AddChildSubTree(const StormBehaviorTreeTemplateBuilder & sub_tree) &&
   {
     m_Subtrees.emplace_back(SubtreeInfo{ &sub_tree, 100 });
     
-=======
-  template <typename Conditional>
-  SubtreeType && AddConditional(bool preempt = false, bool continuous = false) &&
-  {
-    AddConditionalInternal<Conditional>(preempt, continuous);
->>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
     return std::forward<SubtreeType>(*this);
   }
 
@@ -321,7 +314,7 @@ private:
           sizeof(InitData),
           alignof(InitData),
           [](void * mem){ InitData * i = static_cast<InitData *>(mem); i->~InitData(); },
-          [](void * src, void * dst){ InitData * i = static_cast<InitData *>(src); new(dst) InitData(*i); }});
+          [](const void * src, void * dst){ auto i = static_cast<const InitData *>(src); new(dst) InitData(*i); }});
       
       new (m_ServiceInitInfo.back().m_Memory.get()) InitData(std::make_tuple(std::forward<Args>(args)...));
     }
@@ -369,13 +362,8 @@ private:
     
   }
 
-<<<<<<< HEAD
   template <typename Conditional, typename ... Args>
   void AddConditionalInternal(bool preempt, bool continuous, Args && ... args)
-=======
-  template <typename Conditional>
-  void AddConditionalInternal(bool preempt, bool continuous)
->>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
   {
     ConditionalType conditional;
     conditional.m_TypeId = typeid(Conditional).hash_code();
@@ -399,7 +387,7 @@ private:
           sizeof(InitData),
           alignof(InitData),
           [](void * mem){ InitData * i = static_cast<InitData *>(mem); i->~InitData(); },
-          [](void * src, void * dst){ InitData * i = static_cast<InitData *>(src); new(dst) InitData(*i); }});
+          [](const void * src, void * dst){ auto i = static_cast<const InitData *>(src); new(dst) InitData(*i); }});
 
       new (m_ConditionInitInfo.back().m_Memory.get()) InitData(std::make_tuple(std::forward<Args>(args)...));
     }

@@ -16,47 +16,30 @@ struct TestData
   int b;
 };
 
-struct TestUpdater1
+struct TestUpdater
 {
-  bool Update(const TestData & test, const TestContext & context)
+  TestUpdater(int * update_ptr, int id, bool success = true)
   {
-    printf("Update 1\n");
-    return true;
+    m_UpdaterPtr = update_ptr;
+    m_Id = id;
+    m_Success = success;
   }
-};
 
-struct TestUpdater2
-{
   bool Update(const TestData & test, const TestContext & context)
   {
-    printf("Update 2\n");
-    return true;
+    *m_UpdaterPtr = m_Id;
+    return m_Success;
   }
-};
 
-struct TestUpdater3
-{
-  bool Update(const TestData & test, const TestContext & context)
-  {
-    printf("Update 3\n");
-    return true;
-  }
-};
-
-struct TestUpdater4
-{
-  bool Update(const TestData & test, const TestContext & context)
-  {
-    printf("Update 4\n");
-    return true;
-  }
+  int * m_UpdaterPtr;
+  int m_Id;
+  bool m_Success;
 };
 
 struct TestService
 {
   void Update(const TestData & test, const TestContext & context)
   {
-    printf("Test service\n");
   }
 };
 
@@ -64,7 +47,6 @@ struct TestConditional
 {
   bool Check(const TestData & data, const TestContext & context)
   {
-    printf("Test conditional\n");
     return true;
   }
 };
@@ -72,78 +54,29 @@ struct TestConditional
 using BT = StormBehaviorTreeTemplateBuilder<TestData, TestContext>;
 using BTInst = StormBehaviorTree<TestData, TestContext>;
 
-template <typename StateUpdater>
-inline BT State()
+template <typename StateUpdater, typename ... Args>
+inline BT State(Args && ... args)
 {
-  return BT(StormBehaviorTreeTemplateStateMarker<StateUpdater>{});
+  return BT(StormBehaviorTreeTemplateStateMarker<StateUpdater>{}, std::forward<Args>(args)...);
 }
 
-<<<<<<< HEAD
 TEST(BTTest, SelectNode)
 {
+  int update_id = 0;
   auto TestTreeTemplate = StormBehaviorTreeTemplate(
     BT(StormBehaviorNodeType::kSelect)
-      .AddService<TestUpdater>()
       .AddChild(
-        BT(StormBehaviorNodeType::kSelect)
-          .AddChild(
-            State<TestUpdater>()
-            .AddConditional<TestConditional>(false, false)
-          )
-          .AddChild(
-            State<TestUpdater>()
-            .AddService<TestService>()
-          )
+        State<TestUpdater>(&update_id, 1)
       )
       .AddChild(
-        State<TestUpdater>()
-        .AddService<TestService>()
-        .AddConditional<TestConditional>(false, false)
+        State<TestUpdater>(&update_id, 2)
+      )
+      .AddChild(
+        State<TestUpdater>(&update_id, 3)
       ));  
 
   auto test_tree = StormBehaviorTree(TestTreeTemplate);
-  
 }
-=======
-auto TestTree = StormBehaviorTreeTemplate(BT(StormBehaviorNodeType::kSelect)
-  .AddChild(
-    BT(StormBehaviorNodeType::kSequence)
-      .AddService<TestService>()
-      .AddConditional<TestConditional>(true, true)
-      .AddChild(
-        BT(StormBehaviorNodeType::kRandom)
-          .AddChild(
-            State<TestUpdater1>()
-          )
-          .AddChild(
-            State<TestUpdater2>()
-          )
-      )
-      .AddChild(
-        State<TestUpdater3>()
-      )
-  )
-  .AddChild(
-    State<TestUpdater4>()
-  ));
-
-int main()
-{
-  TestTree.DebugPrint();
-
-  std::mt19937 r;
-  StormBehaviorTree bt_inst(TestTree);
-
-  TestData data;
-  TestContext context;
-  bt_inst.Update(data, context, r);
-  bt_inst.Update(data, context, r);
-  bt_inst.Update(data, context, r);
-  
-  bt_inst.Update(data, context, r);
-  bt_inst.Update(data, context, r);
-  bt_inst.Update(data, context, r);
->>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
 
 int main(int argc, char ** argv)
 {

@@ -39,14 +39,13 @@ public:
     std::vector<int> continuous_conditionals;
     std::vector<int> preempt_conditionals;
     std::vector<int> services;
-<<<<<<< HEAD
 
     int init_data_size = 0;
     CalculateInitDataSize(bt, init_data_size);
     m_InitDataMemory = std::make_unique<uint8_t[]>(init_data_size);
 
     int copy_size = 0;
-    ProcessNode(bt, next_in_sequence_nodes, conditionals, services, copy_size);
+    ProcessNode(bt, next_in_sequence_nodes, continuous_conditionals, preempt_conditionals, services, false, copy_size);
   }
 
   StormBehaviorTreeTemplate() = delete;
@@ -63,9 +62,6 @@ public:
       auto * mem = m_InitDataMemory.get() + elem.m_InitOffset;
       elem.m_DestroyInitInfo(mem);
     }
-=======
-    ProcessNode(bt, next_in_sequence_nodes, continuous_conditionals, preempt_conditionals, services, false);
->>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
   }
 
   void DebugPrint()
@@ -124,12 +120,8 @@ private:
   }
 
   int ProcessNode(const StormBehaviorTreeTemplateBuilder<DataType, ContextType> & bt,
-<<<<<<< HEAD
-    std::vector<int> & next_in_sequence_nodes, std::vector<int> & conditionals, std::vector<int> & services, int & init_mem_offset)
-=======
     std::vector<int> & next_in_sequence_nodes, std::vector<int> & continuous_conditionals, 
-    std::vector<int> & preempt_conditionals, std::vector<int> & services, bool can_preempt)
->>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
+    std::vector<int> & preempt_conditionals, std::vector<int> & services, bool can_preempt, int & init_mem_offset)
   {
     auto node_index = static_cast<int>(m_Nodes.size());
     m_Nodes.emplace_back();
@@ -148,21 +140,15 @@ private:
       m_Conditionals.back().m_Offset = m_TotalSize;
       m_TotalSize += elem.m_Size;
       
-<<<<<<< HEAD
       auto & init_info = bt.m_ConditionInitInfo[index];
       AlignSize(init_mem_offset, init_info.m_Alignment);
       init_mem_offset += init_info.m_Size;
       PushMemInit(m_Conditionals.back(), init_info, init_mem_offset);
 
-      conditionals.emplace_back(conditional_index);
-=======
-      PushMemInit(m_Conditionals.back());
-      
       if(m_Conditionals.back().m_Continuous)
       {
         continuous_conditionals.push_back(conditional_index);
       }
->>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
     }
     node.m_ConditionalEnd = static_cast<int>(m_Conditionals.size());
 
@@ -240,13 +226,9 @@ private:
       for(auto & elem : bt.m_Subtrees)
       {
         std::vector<int> new_next_in_sequence_nodes;
-<<<<<<< HEAD
-        m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, new_next_in_sequence_nodes, conditionals, services, init_mem_offset);
-=======
         auto child_node_index = ProcessNode(*elem.m_SubTree, new_next_in_sequence_nodes, 
-          continuous_conditionals, preempt_conditionals, services, false);
+          continuous_conditionals, preempt_conditionals, services, false, init_mem_offset);
         m_ChildNodeLookup[child_index] = child_node_index;
->>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
 
         for (auto & leaf_index : pending_next_in_sequence_nodes)
         {
@@ -270,12 +252,8 @@ private:
       for(auto & elem : bt.m_Subtrees)
       {
         std::vector<int> new_next_in_sequence_nodes;
-<<<<<<< HEAD
-        m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, next_in_sequence_nodes, conditionals, services, init_mem_offset);
-=======
         m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, next_in_sequence_nodes, 
-          continuous_conditionals, preempt_conditionals, services, bt.m_Type == StormBehaviorNodeType::kSelect);
->>>>>>> 978d18792a5397992900d8f8b9a02b2ec303b5a0
+          continuous_conditionals, preempt_conditionals, services, bt.m_Type == StormBehaviorNodeType::kSelect, init_mem_offset);
 
         child_index++;
       }
