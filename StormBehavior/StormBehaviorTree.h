@@ -38,8 +38,9 @@ public:
       m_TreeMemory = std::make_unique<uint8_t[]>(m_BehaviorTree->m_TotalSize);
       for(auto & elem : m_BehaviorTree->m_InitInfo)
       {
-        void * mem = m_TreeMemory.get() + elem.m_Offset;
-        elem.m_Allocate(mem);
+        void * mem = m_TreeMemory.get() + elem.m_TargetOffset;
+        void * init = bt->m_InitDataMemory.get() + elem.m_InitOffset;
+        elem.m_Allocate(mem, init);
       }
     }
   }
@@ -52,7 +53,6 @@ public:
       return;
     }
 
-
     if(m_CurrentNode == -1)
     {
       m_CurrentNode = TraverseNode(0, data, context, random);
@@ -62,6 +62,16 @@ public:
     {
       UpdateNode();
     }
+  }
+
+  int GetCurrentNode() const
+  {
+    return m_CurrentNode;
+  }
+
+  int GetNodeCount() const
+  {
+    return static_cast<int>(m_BehaviorTree->m_Nodes.size());
   }
 
 private:
@@ -75,7 +85,7 @@ private:
 
     for(auto & elem : m_BehaviorTree->m_InitInfo)
     {
-      void * mem = m_TreeMemory.get() + elem.m_Offset;
+      void * mem = m_TreeMemory.get() + elem.m_TargetOffset;
       elem.m_Deallocate(mem);
     }
   }

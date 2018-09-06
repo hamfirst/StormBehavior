@@ -3,11 +3,13 @@
 #include <memory>
 #include <vector>
 #include <optional>
+#include <tuple>
 #include <cassert>
 #include <cstdio>
 
-  template <typename DataType, typename ContextType>
-  class StormBehaviorTreeTemplate;
+template <typename DataType, typename ContextType>
+class StormBehaviorTreeTemplate;
+
 
 enum class StormBehaviorNodeType
 {
@@ -53,6 +55,7 @@ public:
   static const bool value = sizeof(test<T>(0)) == sizeof(char);
 };
 
+
 template <typename DataType, typename ContextType>
 struct StormBehaviorTreeTemplateState
 {
@@ -60,8 +63,9 @@ struct StormBehaviorTreeTemplateState
   int m_Size;
   int m_Offset;
   int m_Align;
+  int m_InitDataOffset;
   const char * m_DebugName;
-  void(*m_Allocate)(void * memory);
+  void(*m_Allocate)(void * memory, void * init_info);
   void(*m_Deallocate)(void * ptr);
   void(*m_Activate)(void * ptr, DataType & data_type, ContextType & context_type);
   void(*m_Deactivate)(void * ptr, DataType & data_type, ContextType & context_type);
@@ -75,8 +79,9 @@ struct StormBehaviorTreeTemplateConditional
   int m_Size;
   int m_Offset;
   int m_Align;
+  int m_InitDataOffset;
   const char * m_DebugName;
-  void(*m_Allocate)(void * memory);
+  void(*m_Allocate)(void * memory, void * init_info);
   void(*m_Deallocate)(void * ptr);
   bool(*m_Check)(void * ptr, const DataType & data_type, const ContextType & context_type);
   bool m_Preempt;
@@ -90,13 +95,37 @@ struct StormBehaviorTreeTemplateService
   int m_Size;
   int m_Offset;
   int m_Align;
+  int m_InitDataOffset;
   const char * m_DebugName;
-  void(*m_Allocate)(void * memory);
+  void(*m_Allocate)(void * memory, void * init_info);
   void(*m_Deallocate)(void * ptr);
   void(*m_Activate)(void * ptr, DataType & data_type, ContextType & context_type);
   void(*m_Deactivate)(void * ptr, DataType & data_type, ContextType & context_type);
   void(*m_Update)(void * ptr, DataType & data_type, ContextType & context_type);
 };
+
+struct StormBehaviorTreeTemplateInitInfo
+{
+  std::unique_ptr<uint8_t[]> m_Memory;
+  std::size_t m_Size = 0;
+  std::size_t m_Alignment = 0;
+
+  void (*m_Destructor)(void * src) = nullptr;
+  void (*m_Copier)(const void * src, void * dst) = nullptr;
+};
+
+template <class T, class Tuple, std::size_t... I>
+void StormBehaviorMakeFromTupleImpl(void * mem, Tuple&& t, std::index_sequence<I...>)
+{
+  return new (mem) T(std::get<I>(std::forward<Tuple>(t))...);
+}
+ 
+template <class T, class Tuple>
+void StormBehaviorMakeFromTuple(void * mem, Tuple&& t)
+{
+    return StormBehaviorMakeFromTupleImpl<T>(mem, std::forward<Tuple>(t),
+        std::make_index_sequence<std::tuple_size<std::remove_reference_t<Tuple>>::value>{});
+}
 
 template <typename UpdaterType>
 struct StormBehaviorTreeTemplateStateMarker
@@ -115,17 +144,14 @@ public:
   using ConditionalType = StormBehaviorTreeTemplateConditional<DataType, ContextType>;
 
   template <typename ... Args>
-  StormBehaviorTreeTemplateBuilder(StormBehaviorNodeType type, Args && ... args) :
+  StormBehaviorTreeTemplateBuilder(StormBehaviorNodeType type) :
     m_Type(type)
   {
-    // If you want to add a leaf node, use AddNode instead of creating another sub tree
     assert(m_Type != StormBehaviorNodeType::kLeaf);
-
-    AddChildren(std::forward<Args>(args)...);
   }
 
-  template <typename State>
-  StormBehaviorTreeTemplateBuilder(const StormBehaviorTreeTemplateStateMarker<State> &) :
+  template <typename State, typename ... Args>
+  StormBehaviorTreeTemplateBuilder(const StormBehaviorTreeTemplateStateMarker<State> &, Args && ... args) :
     m_Type(StormBehaviorNodeType::kLeaf)
   {
     StateType updater;
@@ -133,7 +159,32 @@ public:
     updater.m_DebugName = typeid(State).name();
     updater.m_Size = sizeof(State);
     updater.m_Align = alignof(State);
-    updater.m_Allocate = [](void * mem) { new(mem) State(); };
+
+    if constexpr(sizeof...(Args) > 0)
+    {
+      using InitData = std::tuple<Args...>;
+
+      updater.m_Allocate = [](void * mem, void * init_info)
+      { 
+        auto * init_data = static_cast<InitData *>(init_info);
+        StormBehaviorMakeFromTuple<State>(mem, *init_data);
+      };
+
+      m_StateInitInfo.emplace(
+        StormBehaviorTreeTemplateInitInfo{ 
+          std::make_unique<uint8_t[]>(sizeof(InitData)), 
+          sizeof(InitData),
+          alignof(InitData),
+          [](void * mem){ InitData * i = static_cast<InitData *>(mem); i->~InitData(); },
+          [](void * src, void * dst){ InitData * i = static_cast<InitData *>(src); new(dst) InitData(*i); }});
+      
+      new (m_StateInitInfo->m_Memory.get()) InitData(std::make_tuple(std::forward<Args>(args)...));
+    }
+    else
+    {
+      updater.m_Allocate = [](void * mem, void * init_info) { new(mem) State(); };
+    }
+
     updater.m_Deallocate = [](void * mem) { delete static_cast<State *>(mem); };
 
     if constexpr(StormBehaviorHasActivate<State>::value)
@@ -169,31 +220,65 @@ public:
   StormBehaviorTreeTemplateBuilder(StormBehaviorTreeTemplateBuilder<DataType, ContextType> && rhs) = default;
   StormBehaviorTreeTemplateBuilder & operator = (StormBehaviorTreeTemplateBuilder<DataType, ContextType> && rhs) = default;
 
+  ~StormBehaviorTreeTemplateBuilder()
+  {
+    for(auto & elem : m_ServiceInitInfo)
+    {
+      elem.m_Destructor(elem.m_Memory.get());
+    }
+
+    for(auto & elem : m_ConditionInitInfo)
+    {
+      elem.m_Destructor(elem.m_Memory.get());
+    }
+
+    if(m_StateInitInfo.has_value())
+    {
+      m_StateInitInfo->m_Destructor(m_StateInitInfo->m_Memory.get());
+    }
+  }
+
   SubtreeType && AddChild(SubtreeType && sub_tree) &&
   {
-    AddChildInternal(std::move(sub_tree));
-    return std::forward<SubtreeType>(*this);
-  }
-
-  template <typename State>
-  SubtreeType && AddState() &&
-  {
-    m_OwnedSubtrees.emplace_back(std::make_unique<SubtreeType>(StormBehaviorTreeTemplateStateMarker<State>{}));
+    m_OwnedSubtrees.emplace_back(std::make_unique<SubtreeType>(std::move(sub_tree)));
     m_Subtrees.emplace_back(SubtreeInfo{ m_OwnedSubtrees.back().get(), 100 });
+    
     return std::forward<SubtreeType>(*this);
   }
 
-  template <typename Service>
-  SubtreeType && AddService() &&
+  SubtreeType && AddChild(int random_weight, StormBehaviorTreeTemplateBuilder && sub_tree) &&
   {
-    AddServiceInternal<Service>();
+    m_OwnedSubtrees.emplace_back(std::make_unique<SubtreeType>(std::move(sub_tree)));
+    m_Subtrees.emplace_back(SubtreeInfo{ m_OwnedSubtrees.back().get(), random_weight });
+    
     return std::forward<SubtreeType>(*this);
   }
 
-  template <typename Conditional>
-  SubtreeType && AddConditional() &&
+  SubtreeType && AddChildSubTree(const StormBehaviorTreeTemplateBuilder & sub_tree) &&
   {
-    AddConditionalInternal<Conditional>();
+    m_Subtrees.emplace_back(SubtreeInfo{ &sub_tree, 100 });
+    
+    return std::forward<SubtreeType>(*this);
+  }
+
+  SubtreeType && AddChildSubTree(int random_weight, const StormBehaviorTreeTemplateBuilder & sub_tree) &&
+  {
+    m_Subtrees.emplace_back(SubtreeInfo{ &sub_tree, random_weight });
+    
+    return std::forward<SubtreeType>(*this);
+  }
+
+  template <typename Service, typename ... Args>
+  SubtreeType && AddService(Args && ... args) &&
+  {
+    AddServiceInternal<Service>(std::forward<Args>(args)...);
+    return std::forward<SubtreeType>(*this);
+  }
+
+  template <typename Conditional, typename ... Args>
+  SubtreeType && AddConditional(bool preempt, bool continuous, Args && ... args) &&
+  {
+    AddConditionalInternal<Conditional>(preempt, continuous, std::forward<Args>(args)...);
     return std::forward<SubtreeType>(*this);
   }
 
@@ -204,37 +289,41 @@ public:
 
 private:
 
-  void AddChildInternal(SubtreeType && sub_tree)
-  {
-    m_OwnedSubtrees.emplace_back(std::make_unique<SubtreeType>(std::move(sub_tree)));
-    m_Subtrees.emplace_back(SubtreeInfo{ m_OwnedSubtrees.back().get(), 100 });
-  }
-
-  void AddChildInternal(int random_weight, StormBehaviorTreeTemplateBuilder && sub_tree)
-  {
-    m_OwnedSubtrees.emplace_back(std::make_unique<SubtreeType>(std::move(sub_tree)));
-    m_Subtrees.emplace_back(SubtreeInfo{ m_OwnedSubtrees.back().get(), random_weight });
-  }
-
-  void AddChildInternal(const StormBehaviorTreeTemplateBuilder & sub_tree)
-  {
-    m_Subtrees.emplace_back(SubtreeInfo{ &sub_tree, 100 });
-  }
-
-  void AddChildInternal(int random_weight, const StormBehaviorTreeTemplateBuilder & sub_tree)
-  {
-    m_Subtrees.emplace_back(SubtreeInfo{ &sub_tree, random_weight });
-  }
-
-  template <typename Service>
-  void AddServiceInternal()
+  template <typename Service, typename ... Args>
+  void AddServiceInternal(Args && ... args)
   {
     ServiceType service;
     service.m_TypeId = typeid(Service).hash_code();
     service.m_DebugName = typeid(Service).name();
     service.m_Size = sizeof(Service);    
     service.m_Align = alignof(Service);
-    service.m_Allocate = [](void * mem) { new(mem) Service(); };
+
+    if constexpr(sizeof...(Args) > 0)
+    {
+      using InitData = std::tuple<Args...>;
+
+      service.m_Allocate = [](void * mem, void * init_info) 
+      { 
+        auto * init_data = static_cast<InitData *>(init_info);
+        StormBehaviorMakeFromTuple<Service>(mem, *init_data);
+      };
+
+      m_ServiceInitInfo.emplace_back(
+        StormBehaviorTreeTemplateInitInfo{ 
+          std::make_unique<uint8_t[]>(sizeof(InitData)), 
+          sizeof(InitData),
+          alignof(InitData),
+          [](void * mem){ InitData * i = static_cast<InitData *>(mem); i->~InitData(); },
+          [](void * src, void * dst){ InitData * i = static_cast<InitData *>(src); new(dst) InitData(*i); }});
+      
+      new (m_ServiceInitInfo.back().m_Memory.get()) InitData(std::make_tuple(std::forward<Args>(args)...));
+    }
+    else
+    {
+      service.m_Allocate = [](void * mem, void * init_info) { new(mem) Service(); };
+      m_ServiceInitInfo.emplace_back();
+    }
+
     service.m_Deallocate = [](void * mem) { delete static_cast<Service *>(mem); };
 
     service.m_Activate = nullptr;
@@ -269,17 +358,45 @@ private:
     }
 
     m_Services.emplace_back(std::move(service));
+
+    
   }
 
-  template <typename Conditional>
-  void AddConditionalInternal(bool preempt = false, bool continuous = false)
+  template <typename Conditional, typename ... Args>
+  void AddConditionalInternal(bool preempt, bool continuous, Args && ... args)
   {
     ConditionalType conditional;
     conditional.m_TypeId = typeid(Conditional).hash_code();
     conditional.m_DebugName = typeid(Conditional).name();
     conditional.m_Size = sizeof(Conditional);
     conditional.m_Align = alignof(Conditional);
-    conditional.m_Allocate = [](void * mem) { new(mem) Conditional(); };
+
+    if constexpr(sizeof...(Args) > 0)
+    {
+      using InitData = std::tuple<Args...>;
+
+      conditional.m_Allocate = [](void * mem, void * init_info)
+      { 
+        auto * init_data = static_cast<InitData *>(init_info);
+        StormBehaviorMakeFromTuple<Conditional>(mem, *init_data);
+      };
+
+      m_ConditionInitInfo.emplace_back(
+        StormBehaviorTreeTemplateInitInfo{ 
+          std::make_unique<uint8_t[]>(sizeof(InitData)), 
+          sizeof(InitData),
+          alignof(InitData),
+          [](void * mem){ InitData * i = static_cast<InitData *>(mem); i->~InitData(); },
+          [](void * src, void * dst){ InitData * i = static_cast<InitData *>(src); new(dst) InitData(*i); }});
+
+      new (m_ConditionInitInfo.back().m_Memory.get()) InitData(std::make_tuple(std::forward<Args>(args)...));
+    }
+    else
+    {
+      conditional.m_Allocate = [](void * mem, void * init_info) { new(mem) Conditional(); };
+      m_ConditionInitInfo.emplace_back();
+    }
+
     conditional.m_Deallocate = [](void * mem) { delete static_cast<Conditional*>(mem); };
 
     conditional.m_Check = [](void * ptr, const DataType & data_type, const ContextType & context_type)
@@ -291,18 +408,6 @@ private:
     conditional.m_Preempt = preempt;
     conditional.m_Continuous = continuous;
     m_Conditionals.emplace_back(std::move(conditional));
-  }
-
-  void AddChildren()
-  {
-
-  }
-
-  template <typename Arg, typename ... Args>
-  void AddChildren(Arg && arg, Args && ... args)
-  {
-    AddChildInternal(std::forward<Arg>(arg));
-    AddChildren(std::forward<Args>(args)...);
   }
 
   struct SubtreeInfo
@@ -365,8 +470,11 @@ private:
   StormBehaviorNodeType m_Type;
 
   std::vector<ServiceType> m_Services;
+  std::vector<StormBehaviorTreeTemplateInitInfo> m_ServiceInitInfo;
   std::vector<ConditionalType> m_Conditionals;
+  std::vector<StormBehaviorTreeTemplateInitInfo> m_ConditionInitInfo;
   std::optional<StateType> m_State;
+  std::optional<StormBehaviorTreeTemplateInitInfo> m_StateInitInfo;
 
   const char * m_DebugName;
 

@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <random>
 
+#include <gtest/gtest.h>
+
 struct TestContext
 {
   int a;
@@ -47,38 +49,36 @@ inline BT State()
   return BT(StormBehaviorTreeTemplateStateMarker<StateUpdater>{});
 }
 
-auto TestTree = StormBehaviorTreeTemplate(BT(StormBehaviorNodeType::kSelect)
-  .AddService<TestUpdater>()
-  .AddChild(
+TEST(BTTest, SelectNode)
+{
+  auto TestTreeTemplate = StormBehaviorTreeTemplate(
     BT(StormBehaviorNodeType::kSelect)
+      .AddService<TestUpdater>()
       .AddChild(
-        State<TestUpdater>()
-        .AddConditional<TestConditional>()
+        BT(StormBehaviorNodeType::kSelect)
+          .AddChild(
+            State<TestUpdater>()
+            .AddConditional<TestConditional>(false, false)
+          )
+          .AddChild(
+            State<TestUpdater>()
+            .AddService<TestService>()
+          )
       )
       .AddChild(
         State<TestUpdater>()
         .AddService<TestService>()
-      )
-  )
-  .AddChild(
-    State<TestUpdater>()
-    .AddService<TestService>()
-    .AddConditional<TestConditional>()
-  ));
+        .AddConditional<TestConditional>(false, false)
+      ));  
 
-int main()
+  auto test_tree = StormBehaviorTree(TestTreeTemplate);
+  
+}
+
+int main(int argc, char ** argv)
 {
-  TestTree.DebugPrint();
-
-  std::mt19937 r;
-  StormBehaviorTree bt_inst(TestTree);
-
-  TestData data;
-  TestContext context;
-  bt_inst.Update(data, context, r);
-
-  printf("Done\n");
-  return 0;
+  testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }
 
 

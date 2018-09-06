@@ -38,7 +38,29 @@ public:
     std::vector<int> next_in_sequence_nodes;
     std::vector<int> conditionals;
     std::vector<int> services;
-    ProcessNode(bt, next_in_sequence_nodes, conditionals, services);
+
+    int init_data_size = 0;
+    CalculateInitDataSize(bt, init_data_size);
+    m_InitDataMemory = std::make_unique<uint8_t[]>(init_data_size);
+
+    int copy_size = 0;
+    ProcessNode(bt, next_in_sequence_nodes, conditionals, services, copy_size);
+  }
+
+  StormBehaviorTreeTemplate() = delete;
+  StormBehaviorTreeTemplate(const StormBehaviorTreeTemplate & rhs) = default;
+  StormBehaviorTreeTemplate(StormBehaviorTreeTemplate && rhs) = default;
+
+  StormBehaviorTreeTemplate & operator = (const StormBehaviorTreeTemplate & rhs) = default;
+  StormBehaviorTreeTemplate & operator = (StormBehaviorTreeTemplate && rhs) = default;
+
+  ~StormBehaviorTreeTemplate()
+  {
+    for(auto & elem : m_InitInfo)
+    {
+      auto * mem = m_InitDataMemory.get() + elem.m_InitOffset;
+      elem.m_DestroyInitInfo(mem);
+    }
   }
 
   void DebugPrint()
@@ -57,13 +79,47 @@ private:
   }
 
   template <typename Type>
-  void PushMemInit(const Type & val)
+  void PushMemInit(const Type & val, const StormBehaviorTreeTemplateInitInfo & init_info, int mem_offset)
   {    
-    m_InitInfo.emplace_back(MemInitInfo{ val.m_Allocate, val.m_Deallocate, val.m_Offset });
+    m_InitInfo.emplace_back(MemInitInfo{ 
+      val.m_Allocate, 
+      val.m_Deallocate, 
+      init_info.m_Destructor,
+      val.m_Offset, 
+      mem_offset });
+
+    void * dst_mem = m_InitDataMemory.get() + mem_offset;
+    init_info.m_Copier(init_info.m_Memory.get(), dst_mem);
+  }
+
+  void CalculateInitDataSize(const StormBehaviorTreeTemplateBuilder<DataType, ContextType> & bt, int & size)
+  {
+    for(auto & elem : bt.m_ConditionInitInfo)
+    {
+      AlignSize(size, elem.m_Alignment);
+      size += elem.m_Size;
+    }
+    
+    for(auto & elem : bt.m_ServiceInitInfo)
+    {
+      AlignSize(size, elem.m_Alignment);
+      size += elem.m_Size;
+    }  
+
+    if(bt.m_StateInitInfo.has_value())
+    {
+      AlignSize(size, bt.m_StateInitInfo->m_Alignment);
+      size += bt.m_StateInitInfo->m_Size;
+    }
+
+    for(auto & subtree : bt.m_Subtrees)
+    {
+      CalculateInitDataSize(*subtree.m_SubTree, size);
+    }
   }
 
   int ProcessNode(const StormBehaviorTreeTemplateBuilder<DataType, ContextType> & bt,
-    std::vector<int> & next_in_sequence_nodes, std::vector<int> & conditionals, std::vector<int> & services)
+    std::vector<int> & next_in_sequence_nodes, std::vector<int> & conditionals, std::vector<int> & services, int & init_mem_offset)
   {
     auto node_index = static_cast<int>(m_Nodes.size());
     m_Nodes.emplace_back();
@@ -73,30 +129,38 @@ private:
 
     auto current_conditional_count = conditionals.size();
     node.m_ConditionalStart = static_cast<int>(m_Conditionals.size());
-    for(auto & elem : bt.m_Conditionals)
+    for(int index = 0; index < static_cast<int>(bt.m_Conditionals.size()); ++index)
     {
+      auto & elem = bt.m_Conditionals[index];
       auto conditional_index = static_cast<int>(m_Conditionals.size());
       m_Conditionals.emplace_back(elem);
       AlignSize(m_TotalSize, m_Conditionals.back().m_Align);
       m_Conditionals.back().m_Offset = m_TotalSize;
       m_TotalSize += elem.m_Size;
       
-      PushMemInit(m_Conditionals.back());
+      auto & init_info = bt.m_ConditionInitInfo[index];
+      AlignSize(init_mem_offset, init_info.m_Alignment);
+      init_mem_offset += init_info.m_Size;
+      PushMemInit(m_Conditionals.back(), init_info, init_mem_offset);
 
       conditionals.emplace_back(conditional_index);
     }
     node.m_ConditionalEnd = static_cast<int>(m_Conditionals.size());
 
     auto current_service_count = services.size();
-    for(auto & elem : bt.m_Services)
+    for(int index = 0; index < static_cast<int>(bt.m_Services.size()); ++index)
     {
+      auto & elem = bt.m_Services[index];
       auto service_index = static_cast<int>(m_Services.size());
       m_Services.emplace_back(elem);
       AlignSize(m_TotalSize, m_Services.back().m_Align);
       m_Services.back().m_Offset = m_TotalSize;
       m_TotalSize += elem.m_Size;
       
-      PushMemInit(m_Services.back());
+      auto & init_info = bt.m_ServiceInitInfo[index];
+      AlignSize(init_mem_offset, init_info.m_Alignment);
+      init_mem_offset += init_info.m_Size;
+      PushMemInit(m_Services.back(), init_info, init_mem_offset);
 
       services.emplace_back(service_index);
     }
@@ -114,7 +178,10 @@ private:
       m_States.back().m_Offset = m_TotalSize;
       m_TotalSize += m_States.back().m_Size;
 
-      PushMemInit(m_States.back());
+      auto & init_info = bt.m_StateInitInfo.value();
+      AlignSize(init_mem_offset, init_info.m_Alignment);
+      init_mem_offset += init_info.m_Size;
+      PushMemInit(m_States.back(), init_info, init_mem_offset);
 
       m_Leaves.emplace_back();
       auto & leaf = m_Leaves.back();
@@ -146,7 +213,7 @@ private:
       for(auto & elem : bt.m_Subtrees)
       {
         std::vector<int> new_next_in_sequence_nodes;
-        m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, new_next_in_sequence_nodes, conditionals, services);
+        m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, new_next_in_sequence_nodes, conditionals, services, init_mem_offset);
 
         child_index++;
         if(child_index != node.m_ChildEnd)
@@ -176,7 +243,7 @@ private:
       for(auto & elem : bt.m_Subtrees)
       {
         std::vector<int> new_next_in_sequence_nodes;
-        m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, next_in_sequence_nodes, conditionals, services);
+        m_ChildNodeLookup[child_index] = ProcessNode(*elem.m_SubTree, next_in_sequence_nodes, conditionals, services, init_mem_offset);
 
         child_index++;
       }
@@ -276,12 +343,15 @@ private:
 
   struct MemInitInfo
   {
-    void (*m_Allocate)(void *);
+    void (*m_Allocate)(void *, void *);
     void (*m_Deallocate)(void *);
-    int m_Offset;
+    void (*m_DestroyInitInfo)(void *);
+    int m_TargetOffset;
+    int m_InitOffset;
   };
 
   std::vector<MemInitInfo> m_InitInfo;
+  std::unique_ptr<uint8_t[]> m_InitDataMemory;
   int m_TotalSize = 0;
 };
 
