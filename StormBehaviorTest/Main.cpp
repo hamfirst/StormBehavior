@@ -94,7 +94,7 @@ struct StormBehaviorTestFixture : testing::Test
 
   std::mt19937 r = std::mt19937(0);
 };
-/*
+
 TEST_F(StormBehaviorTestFixture, SelectNode)
 {
   auto TestTreeTemplate = StormBehaviorTreeTemplate(
@@ -110,7 +110,7 @@ TEST_F(StormBehaviorTestFixture, SelectNode)
         State<TestUpdater>(3)
       ));  
 
-  auto test_tree = StormBehaviorTree(TestTreeTemplate);
+  StormBehaviorTree test_tree(TestTreeTemplate);
   EXPECT_EQ(data.m_UpdaterId, 0);
   test_tree.Update(data, context, r);
   EXPECT_EQ(data.m_UpdaterId, 2);
@@ -134,7 +134,7 @@ TEST_F(StormBehaviorTestFixture, SequenceNode)
         State<TestUpdater>(3)
       ));  
 
-  auto test_tree = StormBehaviorTree(TestTreeTemplate);
+  StormBehaviorTree test_tree(TestTreeTemplate);
   EXPECT_EQ(data.m_UpdaterId, 0);
   test_tree.Update(data, context, r);
   EXPECT_EQ(data.m_UpdaterId, 1);
@@ -167,7 +167,7 @@ TEST_F(StormBehaviorTestFixture, Service)
         State<TestUpdater>(3)
       ));  
 
-  auto test_tree = StormBehaviorTree(TestTreeTemplate);
+  StormBehaviorTree test_tree(TestTreeTemplate);
   EXPECT_EQ(data.m_ServiceActive, false);
   EXPECT_EQ(data.m_SerivceUpdated, 0);
   test_tree.Update(data, context, r);
@@ -192,7 +192,7 @@ TEST_F(StormBehaviorTestFixture, Service)
   EXPECT_EQ(data.m_ServiceActive, false);
   EXPECT_EQ(data.m_SerivceUpdated, 2);
 }
-*/
+
 TEST_F(StormBehaviorTestFixture, Conditional)
 {
   auto TestTreeTemplate = StormBehaviorTreeTemplate(
@@ -208,7 +208,7 @@ TEST_F(StormBehaviorTestFixture, Conditional)
         State<TestUpdater>(3)
       ));  
 
-  auto test_tree = StormBehaviorTree(TestTreeTemplate);
+  StormBehaviorTree test_tree(TestTreeTemplate);
   EXPECT_EQ(data.m_UpdaterId, 0);
   test_tree.Update(data, context, r);
   EXPECT_EQ(data.m_UpdaterId, 1);
@@ -220,6 +220,7 @@ TEST_F(StormBehaviorTestFixture, Conditional)
   test_tree.Update(data, context, r);
   EXPECT_EQ(data.m_UpdaterId, 2);
   data.m_ToggleActive = true;
+  test_tree.Update(data, context, r);
   EXPECT_EQ(data.m_UpdaterId, 1);
   test_tree.Update(data, context, r);
   EXPECT_EQ(data.m_UpdaterId, 1);

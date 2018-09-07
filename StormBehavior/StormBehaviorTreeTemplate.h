@@ -106,20 +106,20 @@ private:
   {
     for(auto & elem : bt.m_ConditionInitInfo)
     {
-      AlignSize(size, elem.m_Alignment);
-      size += elem.m_Size;
+      AlignSize(size, static_cast<int>(elem.m_Alignment));
+      size += static_cast<int>(elem.m_Size);
     }
     
     for(auto & elem : bt.m_ServiceInitInfo)
     {
-      AlignSize(size, elem.m_Alignment);
-      size += elem.m_Size;
+      AlignSize(size, static_cast<int>(elem.m_Alignment));
+      size += static_cast<int>(elem.m_Size);
     }  
 
     if(bt.m_StateInitInfo.has_value())
     {
-      AlignSize(size, bt.m_StateInitInfo->m_Alignment);
-      size += bt.m_StateInitInfo->m_Size;
+      AlignSize(size, static_cast<int>(bt.m_StateInitInfo->m_Alignment));
+      size += static_cast<int>(bt.m_StateInitInfo->m_Size);
     }
 
     for(auto & subtree : bt.m_Subtrees)
@@ -150,9 +150,9 @@ private:
       m_TotalSize += elem.m_Size;
       
       auto & init_info = bt.m_ConditionInitInfo[index];
-      AlignSize(init_mem_offset, init_info.m_Alignment);
-      init_mem_offset += init_info.m_Size;
+      AlignSize(init_mem_offset, static_cast<int>(init_info.m_Alignment));
       PushMemInit(m_Conditionals.back(), init_info, init_mem_offset);
+      init_mem_offset += static_cast<int>(init_info.m_Size);
 
       if(m_Conditionals.back().m_Continuous)
       {
@@ -172,9 +172,9 @@ private:
       m_TotalSize += elem.m_Size;
       
       auto & init_info = bt.m_ServiceInitInfo[index];
-      AlignSize(init_mem_offset, init_info.m_Alignment);
-      init_mem_offset += init_info.m_Size;
+      AlignSize(init_mem_offset, static_cast<int>(init_info.m_Alignment));
       PushMemInit(m_Services.back(), init_info, init_mem_offset);
+      init_mem_offset += static_cast<int>(init_info.m_Size);
 
       services.emplace_back(service_index);
     }
@@ -193,9 +193,9 @@ private:
       m_TotalSize += m_States.back().m_Size;
 
       auto & init_info = bt.m_StateInitInfo.value();
-      AlignSize(init_mem_offset, init_info.m_Alignment);
-      init_mem_offset += init_info.m_Size;
+      AlignSize(init_mem_offset, static_cast<int>(init_info.m_Alignment));
       PushMemInit(m_States.back(), init_info, init_mem_offset);
+      init_mem_offset += static_cast<int>(init_info.m_Size);
 
       m_Leaves.emplace_back();
       auto & leaf = m_Leaves.back();
