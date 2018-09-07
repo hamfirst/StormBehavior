@@ -276,9 +276,8 @@ private:
 
     if(can_preempt)
     {
-      for(int index = node.m_ConditionalStart; index < node.m_ConditionalEnd; ++index)
+      for(int conditional_index = node.m_ConditionalStart; conditional_index < node.m_ConditionalEnd; ++conditional_index)
       {
-        auto conditional_index = m_ConditionalLookup[index];
         auto & conditional_info = m_Conditionals[conditional_index];
 
         if(conditional_info.m_Preempt)
@@ -286,7 +285,7 @@ private:
           preempt_conditionals.push_back(conditional_index);
         }
       }
-    }
+  }
 
     return node_index;
   }

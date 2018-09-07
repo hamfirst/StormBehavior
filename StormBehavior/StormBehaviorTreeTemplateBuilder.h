@@ -185,7 +185,7 @@ public:
       updater.m_Allocate = [](void * mem, void * init_info) { new(mem) State(); };
     }
 
-    updater.m_Deallocate = [](void * mem) { delete static_cast<State *>(mem); };
+    updater.m_Deallocate = [](void * mem) { auto ptr = static_cast<State *>(mem); ptr->~State(); };
 
     if constexpr(StormBehaviorHasActivate<State>::value)
     {
@@ -324,7 +324,7 @@ private:
       m_ServiceInitInfo.emplace_back();
     }
 
-    service.m_Deallocate = [](void * mem) { delete static_cast<Service *>(mem); };
+    service.m_Deallocate = [](void * mem) { auto ptr = static_cast<Service *>(mem); ptr->~Service(); };
 
     service.m_Activate = nullptr;
     service.m_Deactivate = nullptr;
@@ -397,7 +397,7 @@ private:
       m_ConditionInitInfo.emplace_back();
     }
 
-    conditional.m_Deallocate = [](void * mem) { delete static_cast<Conditional*>(mem); };
+    conditional.m_Deallocate = [](void * mem) { auto ptr = static_cast<Conditional*>(mem); ptr->~Conditional(); };
 
     conditional.m_Check = [](void * ptr, const DataType & data_type, const ContextType & context_type)
     {

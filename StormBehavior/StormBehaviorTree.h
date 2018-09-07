@@ -56,17 +56,17 @@ public:
 
     if (m_CurrentNode == -1)
     {
-      AdvanceToNextNode(data, context, random, true);
+      AdvanceToNextNode(data, context, random, true, false);
     }
     else
     {
       if(CheckNodeConditionals(m_CurrentNode, data, context) == false)
       {
-        AdvanceToNextNode(data, context, random, true);
+        AdvanceToNextNode(data, context, random, true, false);
       }
       else if (UpdateNode(data, context))
       {
-        AdvanceToNextNode(data, context, random, false);
+        AdvanceToNextNode(data, context, random, false, true);
       }
     }
   }
@@ -328,9 +328,8 @@ private:
     assert(node_index != -1);
 
     auto & node = m_BehaviorTree->m_Nodes[node_index];
-    for(int index = node.m_ConditionalStart; index < node.m_ConditionalEnd; ++index)
+    for(int conditional_index = node.m_ConditionalStart; conditional_index < node.m_ConditionalEnd; ++conditional_index)
     {
-      auto conditional_index = m_BehaviorTree->m_ConditionalLookup[index];
       auto & conditional_info = m_BehaviorTree->m_Conditionals[conditional_index];
 
       void * conditional_mem = m_TreeMemory.get() + conditional_info.m_Offset;
@@ -405,10 +404,9 @@ private:
   }
 
   template <typename RandomSource>
-  void AdvanceToNextNode(DataType & data, ContextType & context, RandomSource & random, bool restart)
+  void AdvanceToNextNode(DataType & data, ContextType & context, RandomSource & random, bool restart, bool updated)
   {
     bool restarted = restart;
-    bool updated = false;
     int new_node = restart ? -1 : m_CurrentNode;
 
     while(true)
