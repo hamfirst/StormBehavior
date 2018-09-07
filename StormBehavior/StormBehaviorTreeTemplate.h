@@ -19,8 +19,10 @@ struct StormBehaviorTreeTemplateNode
 
 struct StormBehaviorTreeTemplateLeaf
 {
-  int m_ConditionalStart;
-  int m_ConditionalEnd;
+  int m_ContinuousConditionalStart;
+  int m_ContinuousConditionalEnd;
+  int m_PreemptConditionalStart;
+  int m_PreemptConditionalEnd;
   int m_ServiceStart;
   int m_ServiceEnd;
   int m_NextInSequence;
@@ -60,7 +62,11 @@ public:
     for(auto & elem : m_InitInfo)
     {
       auto * mem = m_InitDataMemory.get() + elem.m_InitOffset;
-      elem.m_DestroyInitInfo(mem);
+      
+      if(elem.m_DestroyInitInfo)
+      {
+        elem.m_DestroyInitInfo(mem);
+      }
     }
   }
 
@@ -89,8 +95,11 @@ private:
       val.m_Offset, 
       mem_offset });
 
-    void * dst_mem = m_InitDataMemory.get() + mem_offset;
-    init_info.m_Copier(init_info.m_Memory.get(), dst_mem);
+    if(init_info.m_Copier)
+    {
+      void * dst_mem = m_InitDataMemory.get() + mem_offset;
+      init_info.m_Copier(init_info.m_Memory.get(), dst_mem);
+    }
   }
 
   void CalculateInitDataSize(const StormBehaviorTreeTemplateBuilder<DataType, ContextType> & bt, int & size)
@@ -193,18 +202,19 @@ private:
       leaf.m_NextInSequence = -1;
       next_in_sequence_nodes.push_back(leaf_index);
 
-      leaf.m_ConditionalStart = static_cast<int>(m_ConditionalLookup.size());
-      for(auto & conditional_index : preempt_conditionals)
-      {
-        m_ConditionalLookup.emplace_back(conditional_index);
-      }
-      
+      leaf.m_ContinuousConditionalStart = static_cast<int>(m_ConditionalLookup.size());
       for(auto & conditional_index : continuous_conditionals)
       {
         m_ConditionalLookup.emplace_back(conditional_index);
       }
+      leaf.m_ContinuousConditionalEnd = static_cast<int>(m_ConditionalLookup.size());
 
-      leaf.m_ConditionalEnd = static_cast<int>(m_ConditionalLookup.size());
+      leaf.m_PreemptConditionalStart = static_cast<int>(m_ConditionalLookup.size());
+      for(auto & conditional_index : preempt_conditionals)
+      {
+        m_ConditionalLookup.emplace_back(conditional_index);
+      }
+      leaf.m_PreemptConditionalEnd = static_cast<int>(m_ConditionalLookup.size());
 
       leaf.m_ServiceStart = static_cast<int>(m_ServiceLookup.size());
       for(auto & service_index : services)

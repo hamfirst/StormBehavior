@@ -56,18 +56,20 @@ public:
 
     if (m_CurrentNode == -1)
     {
-      AdvanceToNextNode(data, context, random, true, false);
+      AdvanceToNextNode(data, context, random, true);
     }
-    else
+    else if(m_AdvanceNode)
     {
-      if(CheckNodeConditionals(m_CurrentNode, data, context) == false)
-      {
-        AdvanceToNextNode(data, context, random, true, false);
-      }
-      else if (UpdateNode(data, context))
-      {
-        AdvanceToNextNode(data, context, random, false, true);
-      }
+      AdvanceToNextNode(data, context, random, false);
+    }
+    else if(CheckNodeConditionals(m_CurrentNode, data, context) == false)
+    {
+      AdvanceToNextNode(data, context, random, true);
+    }
+    
+    if(m_CurrentNode != -1)
+    {
+      m_AdvanceNode = UpdateNode(data, context);
     }
   }
 
@@ -213,7 +215,7 @@ private:
 
     std::vector<int> new_service_indices;
     std::vector<int> old_service_indices;
-    if(node_index == -1)
+    if(node_index != -1)
     {
       auto & node_info = m_BehaviorTree->m_Nodes[node_index];
       auto leaf_index = node_info.m_LeafIndex;
@@ -279,7 +281,7 @@ private:
     auto & node_info = m_BehaviorTree->m_Nodes[node_index];
     auto & leaf_info = m_BehaviorTree->m_Leaves[node_info.m_LeafIndex];
 
-    for(int index = leaf_info.m_ConditionalStart; index < leaf_info.m_ConditionalEnd; ++index)
+    for(int index = leaf_info.m_ContinuousConditionalStart; index < leaf_info.m_ContinuousConditionalEnd; ++index)
     {
       auto conditional_index = m_BehaviorTree->m_ConditionalLookup[index];
       auto & conditional_info = m_BehaviorTree->m_Conditionals[conditional_index];
@@ -291,13 +293,25 @@ private:
       }
     }
 
+    for(int index = leaf_info.m_PreemptConditionalStart; index < leaf_info.m_PreemptConditionalEnd; ++index)
+    {
+      auto conditional_index = m_BehaviorTree->m_ConditionalLookup[index];
+      auto & conditional_info = m_BehaviorTree->m_Conditionals[conditional_index];
+      auto conditional_mem = m_TreeMemory.get() + conditional_info.m_Offset;
+
+      if(conditional_info.m_Check(conditional_mem, data, context) == true)
+      {
+        return false;
+      }
+    }    
+
     return true;
   }
 
   bool UpdateNode(DataType & data, ContextType & context)
   {
     auto & node_info = m_BehaviorTree->m_Nodes[m_CurrentNode];
-    auto & leaf_info = m_BehaviorTree->m_Leaves[m_CurrentNode];
+    auto & leaf_info = m_BehaviorTree->m_Leaves[node_info.m_LeafIndex];
 
     for (int index = leaf_info.m_ServiceStart; index < leaf_info.m_ServiceEnd; ++index)
     {
@@ -404,7 +418,7 @@ private:
   }
 
   template <typename RandomSource>
-  void AdvanceToNextNode(DataType & data, ContextType & context, RandomSource & random, bool restart, bool updated)
+  void AdvanceToNextNode(DataType & data, ContextType & context, RandomSource & random, bool restart)
   {
     bool restarted = restart;
     int new_node = restart ? -1 : m_CurrentNode;
@@ -414,26 +428,9 @@ private:
       if(new_node == -1)
       {
         new_node = TraverseNode(0, data, context, random);
-        
-        if (new_node == -1)
-        {
-          ActivateNode(new_node, m_CurrentNode, data, context);
-          return;
-        }
 
         ActivateNode(new_node, m_CurrentNode, data, context);
-
-#ifdef ONE_UPDATE_PER_CALL
-        if(updated)
-        {
-          return;
-        }
-#endif
-        updated = true;
-        if(UpdateNode(data, context) == false)
-        {
-          return;
-        }
+        return;
       }
       else
       {
@@ -444,13 +441,6 @@ private:
         if(leaf_info.m_NextInSequence != -1)
         {
           new_node = TraverseNode(leaf_info.m_NextInSequence, data, context, random);
-          if(new_node != -1)
-          {
-            if(CheckNodeConditionals(new_node, data, context) == false)
-            {
-              new_node = -1;
-            }
-          }
         }
 
         if (new_node == -1)
@@ -466,19 +456,7 @@ private:
         }
 
         ActivateNode(new_node, m_CurrentNode, data, context);
-
-#ifdef ONE_UPDATE_PER_CALL
-        if(updated)
-        {
-          return;
-        }
-#endif
-
-        updated = true;
-        if(UpdateNode(data, context) == false)
-        {
-          return;
-        }
+        return;
       }
     }
   }
@@ -489,4 +467,5 @@ private:
   std::unique_ptr<uint8_t[]> m_TreeMemory;
 
   int m_CurrentNode = -1;
+  bool m_AdvanceNode = false;
 };

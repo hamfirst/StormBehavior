@@ -224,17 +224,26 @@ public:
   {
     for(auto & elem : m_ServiceInitInfo)
     {
-      elem.m_Destructor(elem.m_Memory.get());
+      if(elem.m_Destructor)
+      {
+        elem.m_Destructor(elem.m_Memory.get());
+      }
     }
 
     for(auto & elem : m_ConditionInitInfo)
     {
-      elem.m_Destructor(elem.m_Memory.get());
+      if(elem.m_Destructor)
+      {
+        elem.m_Destructor(elem.m_Memory.get());
+      }
     }
 
     if(m_StateInitInfo.has_value())
     {
-      m_StateInitInfo->m_Destructor(m_StateInitInfo->m_Memory.get());
+      if(m_StateInitInfo->m_Destructor)
+      {
+        m_StateInitInfo->m_Destructor(m_StateInitInfo->m_Memory.get());
+      }
     }
   }
 
